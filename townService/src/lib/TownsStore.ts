@@ -28,6 +28,8 @@ export default class TownsStore {
 
   private _towns: Town[] = [];
 
+  private _mapCache: Map<string, ITiledMap> = new Map();
+
   private _emitterFactory: TownEmitterFactory;
 
   static initializeTownsStore(emitterFactory: TownEmitterFactory) {
@@ -90,8 +92,13 @@ export default class TownsStore {
     }
     const townID = process.env.DEMO_TOWN_ID === friendlyName ? friendlyName : friendlyNanoID();
     const newTown = new Town(friendlyName, isPubliclyListed, townID, this._emitterFactory(townID));
-    const data = JSON.parse(await fs.readFile(mapFile, 'utf-8'));
-    const map = ITiledMap.parse(data);
+    let map = this._mapCache.get(mapFile);
+    if (!map) {
+      const data = JSON.parse(await fs.readFile(mapFile, 'utf-8'));
+      map = ITiledMap.parse(data);
+      this._mapCache.set(mapFile, map);
+    }
+
     newTown.initializeFromMap(map);
     this._towns.push(newTown);
     return newTown;

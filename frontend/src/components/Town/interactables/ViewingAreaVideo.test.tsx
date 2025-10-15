@@ -4,7 +4,7 @@ import { cleanup, render, RenderResult } from '@testing-library/react';
 import { mock, MockProxy } from 'jest-mock-extended';
 import React from 'react';
 import { act } from 'react-dom/test-utils';
-import * as ReactPlayer from 'react-player';
+import type { ReactPlayerProps } from 'react-player';
 import TownController from '../../../classes/TownController';
 import ViewingAreaController, {
   ViewingAreaEvents,
@@ -12,50 +12,78 @@ import ViewingAreaController, {
 import TownControllerContext from '../../../contexts/TownControllerContext';
 import { ViewingAreaVideo } from './ViewingAreaVideo';
 
+// Mocking a React class-based component appears to be quite challenging; we define our own mock implementation
+// that mimics the subset of behaviour needed for these tests.
+jest.mock('react-player', () => {
+  const React = require('react');
+  const placeholder = 'MOCK_REACT_PLAYER_PLACEHOLER';
+  const stateKey = '__mockReactPlayerState__';
+  const globalAny = globalThis as Record<string, any>;
+  if (!globalAny[stateKey]) {
+    globalAny[stateKey] = {
+      mockReactPlayerConstructor: jest.fn(),
+      componentDidUpdateSpy: jest.fn(),
+      seekSpy: jest.fn(),
+      latestInstance: undefined,
+    };
+  }
+  const state = globalAny[stateKey];
+  class MockReactPlayer extends React.Component {
+    constructor(props: ReactPlayerProps) {
+      super(props);
+      this.currentTime = 0;
+      state.mockReactPlayerConstructor(props);
+      state.latestInstance = this;
+    }
+
+    getCurrentTime() {
+      return this.currentTime;
+    }
+
+    seekTo(newTime: number, _unit?: 'seconds' | 'fraction') {
+      this.currentTime = newTime;
+      state.seekSpy(newTime);
+    }
+
+    componentDidUpdate() {
+      state.componentDidUpdateSpy(this.props);
+    }
+
+    render() {
+      return React.createElement(React.Fragment, null, placeholder);
+    }
+  }
+  return {
+    __esModule: true,
+    default: MockReactPlayer,
+  };
+});
+
 // A sentinel value that we will render in the mock react player component to help find it in the DOM tree
 const MOCK_REACT_PLAYER_PLACEHOLDER = 'MOCK_REACT_PLAYER_PLACEHOLER';
-// Mocking a React class-based component appears to be quite challenging; we define our own class
-// to use as a mock here. Using jest-mock-extended's mock<ReactPlayer>() doesn't work.
-class MockReactPlayer extends React.Component {
-  private _componentDidUpdateSpy: jest.Mock<never, [ReactPlayer.ReactPlayerProps]>;
 
-  private _seekSpy: jest.Mock<never, [number]>;
+type MockReactPlayerInstance = React.Component<ReactPlayerProps> & {
+  currentTime: number;
+  getCurrentTime(): number;
+  seekTo(newTime: number, unit?: 'seconds' | 'fraction'): void;
+};
 
-  public currentTime = 0;
+type ReactPlayerMockState = {
+  mockReactPlayerConstructor: jest.Mock<void, [ReactPlayerProps]>;
+  componentDidUpdateSpy: jest.Mock<void, [ReactPlayerProps]>;
+  seekSpy: jest.Mock<void, [number]>;
+  latestInstance?: MockReactPlayerInstance;
+};
 
-  constructor(
-    props: ReactPlayer.ReactPlayerProps,
-    componentDidUpdateSpy: jest.Mock<never, [ReactPlayer.ReactPlayerProps]>,
-    seekSpy: jest.Mock<never, [number]>,
-  ) {
-    super(props);
-    this._componentDidUpdateSpy = componentDidUpdateSpy;
-    this._seekSpy = seekSpy;
+function getMockReactPlayerState(): ReactPlayerMockState {
+  const stateKey = '__mockReactPlayerState__';
+  const globalAny = globalThis as Record<string, unknown>;
+  const state = globalAny[stateKey] as ReactPlayerMockState | undefined;
+  if (!state) {
+    throw new Error('ReactPlayer mock state not initialized');
   }
-
-  getCurrentTime() {
-    return this.currentTime;
-  }
-
-  seekTo(newTime: number) {
-    this.currentTime = newTime;
-    this._seekSpy(newTime);
-  }
-
-  componentDidUpdate(): void {
-    this._componentDidUpdateSpy(this.props);
-  }
-
-  render(): React.ReactNode {
-    return <>{MOCK_REACT_PLAYER_PLACEHOLDER}</>;
-  }
+  return state;
 }
-
-const reactPlayerSpy = jest.spyOn(ReactPlayer, 'default');
-// This TS ignore is necessary in order to spy on a react class based component, apparently...
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
-reactPlayerSpy.prototype = React.Component.prototype;
 
 function renderViewingArea(viewingArea: ViewingAreaController, controller: TownController) {
   return (
@@ -68,10 +96,8 @@ function renderViewingArea(viewingArea: ViewingAreaController, controller: TownC
 }
 
 describe('[T4] Viewing Area Video', () => {
-  const mockReactPlayerConstructor = jest.fn<never, [ReactPlayer.ReactPlayerProps]>();
-  const componentDidUpdateSpy = jest.fn<never, [ReactPlayer.ReactPlayerProps]>();
-  const seekSpy = jest.fn<never, [number]>();
-  let mockReactPlayer: MockReactPlayer;
+  let mockReactPlayer: MockReactPlayerInstance;
+  let mockState: ReactPlayerMockState;
   let viewingArea: ViewingAreaController;
   type ViewingAreaEventName = keyof ViewingAreaEvents;
   let addListenerSpy: jest.SpyInstance<
@@ -87,18 +113,11 @@ describe('[T4] Viewing Area Video', () => {
   let townController: MockProxy<TownController>;
 
   let renderData: RenderResult;
-  beforeAll(() => {
-    reactPlayerSpy.mockImplementation(function (props) {
-      mockReactPlayerConstructor(props);
-      const ret = new MockReactPlayer(props, componentDidUpdateSpy, seekSpy);
-      mockReactPlayer = ret;
-      return ret as any;
-    });
-  });
   beforeEach(() => {
-    mockReactPlayerConstructor.mockClear();
-    componentDidUpdateSpy.mockClear();
-    seekSpy.mockClear();
+    mockState = getMockReactPlayerState();
+    mockState.mockReactPlayerConstructor.mockClear();
+    mockState.componentDidUpdateSpy.mockClear();
+    mockState.seekSpy.mockClear();
     townController = mock<TownController>();
     viewingArea = new ViewingAreaController({
       elapsedTimeSec: 0,
@@ -113,24 +132,28 @@ describe('[T4] Viewing Area Video', () => {
     removeListenerSpy = jest.spyOn(viewingArea, 'removeListener');
 
     renderData = render(renderViewingArea(viewingArea, townController));
+    if (!mockState.latestInstance) {
+      throw new Error('Mock ReactPlayer was not instantiated');
+    }
+    mockReactPlayer = mockState.latestInstance;
   });
   /**
    * Retrieve the properties passed to the ReactPlayer the first time it was rendered
    */
   function firstReactPlayerConstructorProps() {
-    return mockReactPlayerConstructor.mock.calls[0][0];
+    return mockState.mockReactPlayerConstructor.mock.calls[0][0];
   }
   /**
    * Retrieve the properties passed to the ReactPlayer the last time it was rendered
    */
   function lastReactPlayerPropUpdate() {
-    return componentDidUpdateSpy.mock.calls[componentDidUpdateSpy.mock.calls.length - 1][0];
+    return mockState.componentDidUpdateSpy.mock.calls[mockState.componentDidUpdateSpy.mock.calls.length - 1][0];
   }
   /**
    * Retrieve the playback time that was passed to 'seek' in its most recent call
    */
   function lastSeekCall() {
-    return seekSpy.mock.calls[seekSpy.mock.calls.length - 1][0];
+    return mockState.seekSpy.mock.calls[mockState.seekSpy.mock.calls.length - 1][0];
   }
   /**
    * Retrieve the listener passed to "addListener" for a given eventName
@@ -248,7 +271,7 @@ describe('[T4] Viewing Area Video', () => {
     });
     it('Pauses the video on playbackChange', async () => {
       expect(viewingArea.isPlaying).toBe(true);
-      expect(componentDidUpdateSpy).not.toBeCalled();
+      expect(mockState.componentDidUpdateSpy).not.toBeCalled();
       act(() => {
         viewingArea.emit('playbackChange', false);
       });
@@ -257,7 +280,7 @@ describe('[T4] Viewing Area Video', () => {
     });
     it('Unpauses the video on playbackChange', () => {
       expect(viewingArea.isPlaying).toBe(true);
-      expect(componentDidUpdateSpy).not.toBeCalled();
+      expect(mockState.componentDidUpdateSpy).not.toBeCalled();
       act(() => {
         viewingArea.emit('playbackChange', false);
       });
@@ -288,7 +311,7 @@ describe('[T4] Viewing Area Video', () => {
       act(() => {
         viewingArea.emit('progressChange', 13);
       });
-      expect(seekSpy).not.toBeCalled();
+      expect(mockState.seekSpy).not.toBeCalled();
     });
   });
   describe('[T4] Bridging events from the ReactPlayer to the ViewingAreaController', () => {
