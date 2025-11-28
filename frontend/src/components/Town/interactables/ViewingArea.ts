@@ -24,7 +24,7 @@ export default class ViewingArea extends Interactable {
       this.x - this.displayWidth / 2,
       this.y - this.displayHeight / 2,
       `Press space to watch the ${this.name} video`,
-      { color: '#FFFFFF', backgroundColor: '#000000' },
+      { color: 'white', backgroundColor: 'red' },
     );
     this._labelText.setVisible(false);
     this.setDepth(-1);

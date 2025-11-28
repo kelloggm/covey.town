@@ -6,9 +6,12 @@ import SocialSidebar from '../SocialSidebar/SocialSidebar';
 import NewConversationModal from './interactables/NewCoversationModal';
 import TownGameScene from './TownGameScene';
 import GameAreaWrapper from './interactables/GamesArea';
+import JukeboxAreaWrapper from './interactables/Jukebox/JukeboxAreaMusic';
 import useChatContext from '../VideoCall/VideoFrontend/hooks/useChatContext/useChatContext';
 import ChatWindow from '../VideoCall/VideoFrontend/components/ChatWindow/ChatWindow';
 import clsx from 'clsx';
+import MuteButton from './interactables/MuteButton';
+import { AudioProvider } from '../../contexts/AudioContext';
 import { createStyles, makeStyles, Theme } from '@material-ui/core';
 
 const useStyles = makeStyles((theme: Theme) =>
@@ -85,10 +88,13 @@ export default function TownMap(): JSX.Element {
     <div id='app-container'>
       <NewConversationModal />
       <GameAreaWrapper />
+      <AudioProvider>
+        <JukeboxAreaWrapper />
+        <MuteButton />
+      </AudioProvider>
       <aside className={clsx(classes.chatWindowContainer, { [classes.hide]: !isChatWindowOpen })}>
         <ChatWindow />
       </aside>
-
       <div id='map-container' />
       <div id='social-container'>
         <SocialSidebar />

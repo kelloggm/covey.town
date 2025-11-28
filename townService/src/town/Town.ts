@@ -23,12 +23,13 @@ import ConversationArea from './ConversationArea';
 import GameAreaFactory from './games/GameAreaFactory';
 import InteractableArea from './InteractableArea';
 import ViewingArea from './ViewingArea';
+import JukeboxArea, { HasPlayerCount } from './JukeboxArea';
 
 /**
  * The Town class implements the logic for each town: managing the various events that
  * can occur (e.g. joining a town, moving, leaving a town)
  */
-export default class Town {
+export default class Town implements HasPlayerCount {
   get capacity(): number {
     return this._capacity;
   }
@@ -418,6 +419,12 @@ export default class Town {
         ConversationArea.fromMapObject(eachConvAreaObj, this._broadcastEmitter),
       );
 
+    const jukeboxAreas = objectLayer.objects
+      .filter(eachObject => eachObject.type === 'JukeboxArea')
+      .map(eachJukeboxAreaObj =>
+        JukeboxArea.fromMapObject(eachJukeboxAreaObj, this._broadcastEmitter, this),
+      );
+
     const gameAreas = objectLayer.objects
       .filter(eachObject => eachObject.type === 'GameArea')
       .map(eachGameAreaObj => GameAreaFactory(eachGameAreaObj, this._broadcastEmitter));
@@ -425,6 +432,7 @@ export default class Town {
     this._interactables = this._interactables
       .concat(viewingAreas)
       .concat(conversationAreas)
+      .concat(jukeboxAreas)
       .concat(gameAreas);
     this._validateInteractables();
   }
@@ -451,5 +459,13 @@ export default class Town {
         }
       }
     }
+  }
+
+  /**
+   * Returns the number of players in the town.
+   * @returns the number of players in the town
+   */
+  public playerCount(): number {
+    return this._players.length;
   }
 }
