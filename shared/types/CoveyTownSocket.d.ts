@@ -1,3 +1,5 @@
+// For paintball changes, read townService/src/town/games/PaintBall/README.md
+// (path from the repository root) and follow its README maintenance rules.
 export type TownJoinResponse = {
   /** Unique ID that represents this player * */
   userID: string;
@@ -97,6 +99,126 @@ export interface GameMove<MoveType> {
   gameID: GameInstanceID;
   move: MoveType;
 }
+
+/** Shared team labels for the first contract draft; review these names with the team. */
+export type PaintballTeam = 'RED' | 'BLUE';
+
+/** Paintball-specific lifecycle stages; keep the existing cross-game GameStatus unchanged. */
+export type PaintballPhase = 'LOBBY' | 'COUNTDOWN' | 'ACTIVE' | 'RESULTS';
+
+/** Settings from the saved task guide; units are explicit and rules still need implementation. */
+export interface PaintballConfig {
+  /** Maximum active participants, not the maximum number of town observers. */
+  maxPlayers: number;
+  /** Active-play duration; excludes any pre-match countdown. */
+  matchDurationSeconds: number;
+  /** Delay between elimination and respawning, in milliseconds. */
+  respawnDelayMs: number;
+  /** Protection duration following a respawn, in milliseconds. */
+  spawnProtectionMs: number;
+  /** Minimum accepted interval between shots from one player, in milliseconds. */
+  minShotIntervalMs: number;
+}
+
+/** Describes one player's match stats; this type does not initialize or validate values. */
+export interface PaintballPlayerState {
+  /** Links these match stats to the existing town player's unique ID. */
+  playerID: PlayerID;
+  /** Snapshot of the display name; refresh from the authoritative town Player as appropriate. */
+  userName: string;
+  /** Server-assigned team; absent while an entrant is awaiting assignment. */
+  team?: PaintballTeam;
+  /** Whether this participant has declared readiness in the lobby. */
+  isReady: boolean;
+  /** Facing direction in the current four-direction input draft; not free-angle aiming. */
+  direction: Direction;
+  /** Stores the player's arena coordinates; spawn and movement rules are still undecided. */
+  position: XY;
+  /** Stores remaining ammunition; starting ammo and reload behavior are not implemented. */
+  ammo: number;
+  /** Stores the server-calculated score; the scoring rules are not implemented. */
+  score: number;
+  /** Records elimination state; hit detection and respawn rules are not implemented. */
+  isEliminated: boolean;
+  /** Server Unix epoch milliseconds for respawn; absent if no respawn is pending. */
+  respawnAtMs?: number;
+  /** Server Unix epoch milliseconds when spawn protection ends; absent when unprotected. */
+  protectedUntilMs?: number;
+  /** Last accepted shot's server Unix epoch milliseconds; absent before the first shot. */
+  lastShotAtMs?: number;
+}
+
+/** Server-owned projectile snapshot for later collision logic and client rendering. */
+export interface PaintballProjectile {
+  /** Unique projectile identifier within the match. */
+  id: string;
+  /** Participant who fired it; clients must not choose an authoritative shooter. */
+  shooterID: PlayerID;
+  /** Team at firing time, used by future friendly-fire and rendering rules. */
+  team: PaintballTeam;
+  /** Arena coordinates; coordinate scale and collision geometry remain a team decision. */
+  position: XY;
+  /** Arena-coordinate units per second, not a per-frame displacement. */
+  velocity: XY;
+}
+
+/** Describes the whole match and inherits its status and optional winner. */
+export interface PaintballGameState extends WinnableGameState {
+  /** Detailed paintball stage; update alongside the inherited cross-game status. */
+  phase: PaintballPhase;
+  /** Current host's participant ID; absent in an empty lobby. */
+  hostPlayerID?: PlayerID;
+  /** Server-calculated team totals, not values accepted from a client's input. */
+  teamScores: Record<PaintballTeam, number>;
+  /** Remaining pre-match countdown; zero outside a running countdown. */
+  countdownRemainingSeconds: number;
+  /** Active projectiles; declaring the array does not implement firing or collision. */
+  projectiles: PaintballProjectile[];
+  /** Winning team in results; absent for a tie or an unfinished match. */
+  winningTeam?: PaintballTeam;
+  /** Holds match-specific player stats, separate from Game's server Player list. */
+  playerStates: PaintballPlayerState[];
+  /** Stores remaining match time in seconds; declaring this field does not run a timer. */
+  timeRemainingSeconds: number;
+}
+
+/**
+ * Describes a requested move or shot using the existing four-direction town type.
+ * A future server implementation must validate it and determine any hits or scores.
+ * This declaration alone does not add paintball actions to the socket command union.
+ */
+export type PaintballMove =
+  | { type: 'move'; direction: Direction }
+  | { type: 'shoot'; direction: Direction };
+
+/** Lobby readiness request; the server derives the actor from the authenticated socket. */
+export interface PaintballReadyCommand {
+  type: 'PaintballReady';
+  gameID: GameInstanceID;
+  isReady: boolean;
+}
+
+/** Requested team preference, not an authoritative assignment or permission to unbalance teams. */
+export interface PaintballTeamCommand {
+  type: 'PaintballTeam';
+  gameID: GameInstanceID;
+  team: PaintballTeam;
+}
+
+/**
+ * Draft command contract for the future paintball area/controller.
+ * Not yet part of InteractableCommand: existing game handlers assume board-game moves.
+ * Integrate with proper narrowing and runtime validation before sending over TownController.
+ */
+export type PaintballCommand = JoinGameCommand | LeaveGameCommand | StartGameCommand
+  | GameMoveCommand<PaintballMove> | PaintballReadyCommand | PaintballTeamCommand;
+
+/** Success payload follows the existing join-ID / no-payload command pattern. */
+export type PaintballCommandReturnType<T extends PaintballCommand> =
+  T extends JoinGameCommand ? { gameID: GameInstanceID } : undefined;
+
+/** Named, artificial UI/backend fixtures; never a live server state or an actual match. */
+export type PaintballExampleName = 'lobby' | 'countdown' | 'active' | 'respawning' | 'tiedResults';
 
 export type TicTacToeGridPosition = 0 | 1 | 2;
 

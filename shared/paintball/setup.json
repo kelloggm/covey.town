@@ -1,0 +1,10 @@
+{
+  "_readme": "Read townService/src/town/games/PaintBall/README.md (repository-root-relative) before changing this draft contract. JSON uses this field instead of comments.",
+  "defaults": {
+    "maxPlayers": 10,
+    "matchDurationSeconds": 180,
+    "respawnDelayMs": 3000,
+    "spawnProtectionMs": 2000,
+    "minShotIntervalMs": 300
+  }
+}
